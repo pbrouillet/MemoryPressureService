@@ -28,8 +28,10 @@ Windows-only Rust CLI (`mpa`) that reads Windows physical memory page list stati
 - **`display`** — Renders `MemoryStats` as `comfy-table` tables or `serde_json`. Provides `render_table_to_string()` and `print_diff()` for before/after comparisons.
 - **`cli`** — Clap derive structs. Global `--json` flag, subcommands `stats`, `purge {workingsets|standby|modified|all}`, and `monitor`.
 - **`error`** — `MpaError` enum with `WinApi`, `Privilege`, and `General` variants. `MpaError::winapi()` auto-captures `GetLastError()`.
-- **`monitor`** — Orchestrator for system-tray mode. Uses `tao` event loop, `tray-icon`+`muda` for the tray icon and context menu, and `wry` (WebView2) for the stats window. Purge operations spawn background threads and auto-refresh the stats webview on completion.
+- **`monitor`** — Orchestrator for system-tray mode. Uses `tao` event loop, `tray-icon`+`muda` for the tray icon and context menu, and `wry` (WebView2) for the stats and settings windows. Purge operations spawn background threads and auto-refresh the stats webview on completion. Settings are loaded at startup and saved via IPC from the settings dialog.
 - **`html`** — Embedded HTML/CSS/JS template for the stats WebView. Fluent Design styling (dark/light mode via `prefers-color-scheme`), card layout, color-coded page list bars, memory load gauge, Refresh button via IPC.
+- **`settings_html`** — Embedded HTML/CSS/JS template for the settings WebView dialog. Matching Fluent Design form with per-area threshold inputs and action dropdowns. Communicates via IPC JSON messages (`save`/`cancel`).
+- **`config`** — Application settings model. `Settings` and `ThresholdConfig` structs with serde Serialize/Deserialize, `load()`/`save()` to `mpa-settings.json` alongside the executable. Memory areas: memory_load (%), modified_list (MB), standby_list (MB), available_memory (MB). Actions: None, Notify, Purge.
 
 ## Key Conventions
 

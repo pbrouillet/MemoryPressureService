@@ -7,13 +7,15 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Sub
 use tray_icon::{Icon, TrayIconBuilder};
 use wry::WebViewBuilder;
 
-use crate::{html, privilege, purge, stats};
+use crate::{config, html, privilege, purge, settings_html, stats};
 
 #[derive(Debug)]
 enum UserEvent {
     MenuClicked(MenuId),
     RefreshStats,
     PurgeComplete(String),
+    SettingsSaved(config::Settings),
+    SettingsCancelled,
 }
 
 pub fn run() {
@@ -30,6 +32,7 @@ pub fn run() {
 
     // --- Build tray menu ---
     let stats_item = MenuItem::new("Stats", true, None);
+    let settings_item = MenuItem::new("Settings", true, None);
     let purge_sub = Submenu::new("Purge Now", true);
     let ws_item = MenuItem::new("Working Sets", true, None);
     let sb_item = MenuItem::new("Standby List", true, None);
@@ -50,6 +53,7 @@ pub fn run() {
     let menu = Menu::new();
     let _ = menu.append_items(&[
         &stats_item,
+        &settings_item,
         &PredefinedMenuItem::separator(),
         &purge_sub,
         &PredefinedMenuItem::separator(),
@@ -58,6 +62,7 @@ pub fn run() {
 
     // Capture menu item IDs for matching
     let id_stats = stats_item.id().clone();
+    let id_settings = settings_item.id().clone();
     let id_ws = ws_item.id().clone();
     let id_sb = sb_item.id().clone();
     let id_sbl = sbl_item.id().clone();
@@ -83,6 +88,9 @@ pub fn run() {
     // --- State ---
     let mut window: Option<tao::window::Window> = None;
     let mut webview: Option<wry::WebView> = None;
+    let mut settings_window: Option<tao::window::Window> = None;
+    let mut settings_webview: Option<wry::WebView> = None;
+    let mut settings = config::Settings::load();
 
     event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -102,6 +110,20 @@ pub fn run() {
                             w.set_focus();
                         }
                         refresh_stats_webview(webview.as_ref().unwrap());
+                    }
+                } else if *eid == id_settings {
+                    if settings_window.is_none() {
+                        let ipc_proxy = proxy.clone();
+                        let (w, wv) = create_settings_window(event_loop, ipc_proxy);
+                        settings_window = Some(w);
+                        settings_webview = Some(wv);
+                        inject_settings(settings_webview.as_ref().unwrap(), &settings);
+                    } else {
+                        if let Some(w) = &settings_window {
+                            w.set_visible(true);
+                            w.set_focus();
+                        }
+                        inject_settings(settings_webview.as_ref().unwrap(), &settings);
                     }
                 } else if *eid == id_ws {
                     spawn_purge(&proxy, "Working Sets", PurgeKind::WorkingSets);
@@ -128,13 +150,35 @@ pub fn run() {
                     refresh_stats_webview(wv);
                 }
             }
+            Event::UserEvent(UserEvent::SettingsSaved(new_settings)) => {
+                settings = new_settings;
+                if let Err(e) = settings.save() {
+                    eprintln!("Failed to save settings: {e}");
+                }
+                if let Some(wv) = &settings_webview {
+                    let _ = wv.evaluate_script("showToast('Settings saved')");
+                }
+            }
+            Event::UserEvent(UserEvent::SettingsCancelled) => {
+                if let Some(w) = &settings_window {
+                    w.set_visible(false);
+                }
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
+                ref window_id,
                 ..
             } => {
-                // Hide instead of destroying
+                // Hide the window instead of destroying
                 if let Some(w) = &window {
-                    w.set_visible(false);
+                    if w.id() == *window_id {
+                        w.set_visible(false);
+                    }
+                }
+                if let Some(w) = &settings_window {
+                    if w.id() == *window_id {
+                        w.set_visible(false);
+                    }
                 }
             }
             _ => {}
@@ -165,6 +209,52 @@ fn create_stats_window(
         .expect("Failed to create WebView");
 
     (window, webview)
+}
+
+fn create_settings_window(
+    event_loop: &tao::event_loop::EventLoopWindowTarget<UserEvent>,
+    ipc_proxy: tao::event_loop::EventLoopProxy<UserEvent>,
+) -> (tao::window::Window, wry::WebView) {
+    let window = WindowBuilder::new()
+        .with_title("MPA — Settings")
+        .with_inner_size(tao::dpi::LogicalSize::new(620.0, 480.0))
+        .with_window_icon(Some(create_window_icon()))
+        .build(event_loop)
+        .expect("Failed to create settings window");
+
+    let webview = WebViewBuilder::new()
+        .with_html(settings_html::SETTINGS_HTML)
+        .with_ipc_handler(move |request| {
+            let body = request.body();
+            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(body) {
+                match msg.get("cmd").and_then(|c| c.as_str()) {
+                    Some("save") => {
+                        if let Some(s) = msg.get("settings") {
+                            if let Ok(new_settings) =
+                                serde_json::from_value::<config::Settings>(s.clone())
+                            {
+                                let _ =
+                                    ipc_proxy.send_event(UserEvent::SettingsSaved(new_settings));
+                            }
+                        }
+                    }
+                    Some("cancel") => {
+                        let _ = ipc_proxy.send_event(UserEvent::SettingsCancelled);
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .build(&window)
+        .expect("Failed to create settings WebView");
+
+    (window, webview)
+}
+
+fn inject_settings(webview: &wry::WebView, settings: &config::Settings) {
+    let json = serde_json::to_string(settings).unwrap_or_default();
+    let script = format!("loadSettings({json})");
+    let _ = webview.evaluate_script(&script);
 }
 
 fn refresh_stats_webview(webview: &wry::WebView) {

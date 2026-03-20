@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod display;
 mod error;
 mod html;
@@ -6,6 +7,7 @@ mod monitor;
 mod ntapi;
 mod privilege;
 mod purge;
+mod settings_html;
 mod stats;
 
 use std::process;

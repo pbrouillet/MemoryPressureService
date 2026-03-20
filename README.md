@@ -9,7 +9,8 @@ A Windows CLI tool that displays detailed physical memory statistics and can pur
 - **Purge commands** — empty working sets, flush modified pages, purge standby list (all or low-priority only)
 - **Before/after stats** — every purge shows a delta summary so you see exactly what changed
 - **Table or JSON output** — `--json` flag for scripting and automation
-- **System-tray monitor** — resident tray icon with context menu for quick purges and a stats window
+- **System-tray monitor** — resident tray icon with context menu for quick purges, a stats window, and settings dialog
+- **Persistent settings** — per-area warning thresholds and actions stored in `mpa-settings.json` alongside the executable
 
 ## Usage
 
@@ -31,6 +32,7 @@ mpa monitor                     # Launch system-tray monitor mode
 `mpa monitor` starts a resident system-tray application with:
 - **Tray icon** — right-click for context menu
 - **Stats** — opens a modern **WebView2 window** with Fluent Design styling (dark/light mode, card layout, color-coded bars, memory load gauge)
+- **Settings** — opens a configuration dialog for warning thresholds and actions per memory area (memory load, available memory, modified list, standby list). Settings are saved to `mpa-settings.json` next to the executable.
 - **Purge Now** — submenu with Working Sets, Standby List, Standby (Low Priority), Modified List, and All
 - **Exit** — removes the tray icon and quits
 
