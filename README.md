@@ -1,6 +1,6 @@
 # mpa — Memory Pressure Agent
 
-A Windows CLI tool that displays detailed physical memory statistics and can purge memory regions to relieve pressure. Think of it as a scriptable, command-line [RAMMap](https://learn.microsoft.com/en-us/sysinternals/downloads/rammap).
+A Windows CLI tool that displays detailed physical memory statistics and can purge memory regions to relieve pressure. Includes a **system-tray monitor mode** for always-on memory management. Think of it as a scriptable, command-line [RAMMap](https://learn.microsoft.com/en-us/sysinternals/downloads/rammap).
 
 ## Features
 
@@ -9,6 +9,7 @@ A Windows CLI tool that displays detailed physical memory statistics and can pur
 - **Purge commands** — empty working sets, flush modified pages, purge standby list (all or low-priority only)
 - **Before/after stats** — every purge shows a delta summary so you see exactly what changed
 - **Table or JSON output** — `--json` flag for scripting and automation
+- **System-tray monitor** — resident tray icon with context menu for quick purges and a stats window
 
 ## Usage
 
@@ -20,9 +21,20 @@ mpa purge standby                # Purge the entire standby list
 mpa purge standby --low-only     # Purge only low-priority standby pages
 mpa purge modified               # Flush modified page list to disk
 mpa purge all                    # All of the above in sequence
+mpa monitor                     # Launch system-tray monitor mode
 ```
 
-`stats` works as a regular user. All `purge` commands require an **Administrator** terminal.
+`stats` works as a regular user. All `purge` commands and `monitor` mode require an **Administrator** terminal.
+
+### Monitor mode
+
+`mpa monitor` starts a resident system-tray application with:
+- **Tray icon** — right-click for context menu
+- **Stats** — opens a window displaying the same memory statistics table
+- **Purge Now** — submenu with Working Sets, Standby List, Standby (Low Priority), Modified List, and All
+- **Exit** — removes the tray icon and quits
+
+Purge operations run on a background thread with a balloon notification on completion showing the result and how much memory was freed.
 
 ### Example output
 

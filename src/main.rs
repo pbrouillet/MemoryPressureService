@@ -1,10 +1,13 @@
 mod cli;
 mod display;
 mod error;
+mod monitor;
 mod ntapi;
 mod privilege;
 mod purge;
 mod stats;
+mod statswindow;
+mod tray;
 
 use std::process;
 use std::sync::mpsc;
@@ -31,6 +34,9 @@ fn main() {
         }
         Command::Purge { target } => {
             run_purge(target, cli.json);
+        }
+        Command::Monitor => {
+            monitor::run();
         }
     }
 }

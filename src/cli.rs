@@ -21,6 +21,9 @@ pub enum Command {
         #[command(subcommand)]
         target: PurgeTarget,
     },
+
+    /// Run as a resident system-tray monitor
+    Monitor,
 }
 
 #[derive(Subcommand)]

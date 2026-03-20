@@ -15,8 +15,26 @@ fn render_json(stats: &MemoryStats) {
     println!("{json}");
 }
 
+/// Build the stats tables as a single String (for use in GUI windows).
+pub fn render_table_to_string(stats: &MemoryStats) -> String {
+    let mut out = String::new();
+    out.push_str(&build_overview_table(stats).to_string());
+    out.push_str("\r\n\r\n");
+    out.push_str(&build_pages_table(stats).to_string());
+    out.push_str("\r\n\r\n");
+    out.push_str(&build_standby_table(stats).to_string());
+    out
+}
+
 fn render_table(stats: &MemoryStats) {
-    // System overview
+    println!("{}", build_overview_table(stats));
+    println!();
+    println!("{}", build_pages_table(stats));
+    println!();
+    println!("{}", build_standby_table(stats));
+}
+
+fn build_overview_table(stats: &MemoryStats) -> Table {
     let mut overview = Table::new();
     overview.load_preset(UTF8_FULL);
     overview.set_content_arrangement(ContentArrangement::Dynamic);
@@ -61,9 +79,10 @@ fn render_table(stats: &MemoryStats) {
             stats.process_count, stats.thread_count, stats.handle_count
         ),
     ]);
-    println!("{overview}\n");
+    overview
+}
 
-    // Page lists
+fn build_pages_table(stats: &MemoryStats) -> Table {
     let mut pages = Table::new();
     pages.load_preset(UTF8_FULL);
     pages.set_content_arrangement(ContentArrangement::Dynamic);
@@ -102,9 +121,10 @@ fn render_table(stats: &MemoryStats) {
             ),
         ]);
     }
-    println!("{pages}\n");
+    pages
+}
 
-    // Standby by priority
+fn build_standby_table(stats: &MemoryStats) -> Table {
     let mut standby = Table::new();
     standby.load_preset(UTF8_FULL);
     standby.set_content_arrangement(ContentArrangement::Dynamic);
@@ -128,7 +148,7 @@ fn render_table(stats: &MemoryStats) {
             ),
         ]);
     }
-    println!("{standby}");
+    standby
 }
 
 fn format_pages(count: usize) -> String {
