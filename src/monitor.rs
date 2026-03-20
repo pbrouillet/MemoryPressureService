@@ -3,7 +3,7 @@ use std::thread;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::window::WindowBuilder;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{Icon, TrayIconBuilder};
 use wry::WebViewBuilder;
 
@@ -11,6 +11,7 @@ use crate::{html, privilege, purge, stats};
 
 #[derive(Debug)]
 enum UserEvent {
+    MenuClicked(MenuId),
     RefreshStats,
     PurgeComplete(String),
 }
@@ -73,11 +74,10 @@ pub fn run() {
         .build()
         .expect("Failed to create tray icon");
 
-    // Forward menu events to the event loop
+    // Forward menu events to the event loop with the actual menu ID
     let menu_proxy = event_loop.create_proxy();
-    MenuEvent::set_event_handler(Some(move |_event: MenuEvent| {
-        // Wake the event loop so it can poll the receiver
-        let _ = menu_proxy.send_event(UserEvent::RefreshStats);
+    MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+        let _ = menu_proxy.send_event(UserEvent::MenuClicked(event.id));
     }));
 
     // --- State ---
@@ -87,42 +87,36 @@ pub fn run() {
     event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        // Poll for menu events
-        while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
-            let eid = &menu_event.id;
-            if *eid == id_stats {
-                // Create or show stats window
-                if window.is_none() {
-                    let ipc_proxy = proxy.clone();
-                    let (w, wv) = create_stats_window(event_loop, ipc_proxy);
-                    window = Some(w);
-                    webview = Some(wv);
-                    // Initial refresh
-                    refresh_stats_webview(webview.as_ref().unwrap());
-                } else {
-                    // Bring to front
-                    if let Some(w) = &window {
-                        w.set_visible(true);
-                        w.set_focus();
-                    }
-                    refresh_stats_webview(webview.as_ref().unwrap());
-                }
-            } else if *eid == id_ws {
-                spawn_purge(&proxy, "Working Sets", PurgeKind::WorkingSets);
-            } else if *eid == id_sb {
-                spawn_purge(&proxy, "Standby List", PurgeKind::Standby);
-            } else if *eid == id_sbl {
-                spawn_purge(&proxy, "Standby (Low)", PurgeKind::StandbyLow);
-            } else if *eid == id_mod {
-                spawn_purge(&proxy, "Modified List", PurgeKind::Modified);
-            } else if *eid == id_all {
-                spawn_purge(&proxy, "All", PurgeKind::All);
-            } else if *eid == id_exit {
-                *control_flow = ControlFlow::ExitWithCode(0);
-            }
-        }
-
         match event {
+            Event::UserEvent(UserEvent::MenuClicked(ref eid)) => {
+                if *eid == id_stats {
+                    if window.is_none() {
+                        let ipc_proxy = proxy.clone();
+                        let (w, wv) = create_stats_window(event_loop, ipc_proxy);
+                        window = Some(w);
+                        webview = Some(wv);
+                        refresh_stats_webview(webview.as_ref().unwrap());
+                    } else {
+                        if let Some(w) = &window {
+                            w.set_visible(true);
+                            w.set_focus();
+                        }
+                        refresh_stats_webview(webview.as_ref().unwrap());
+                    }
+                } else if *eid == id_ws {
+                    spawn_purge(&proxy, "Working Sets", PurgeKind::WorkingSets);
+                } else if *eid == id_sb {
+                    spawn_purge(&proxy, "Standby List", PurgeKind::Standby);
+                } else if *eid == id_sbl {
+                    spawn_purge(&proxy, "Standby (Low)", PurgeKind::StandbyLow);
+                } else if *eid == id_mod {
+                    spawn_purge(&proxy, "Modified List", PurgeKind::Modified);
+                } else if *eid == id_all {
+                    spawn_purge(&proxy, "All", PurgeKind::All);
+                } else if *eid == id_exit {
+                    *control_flow = ControlFlow::ExitWithCode(0);
+                }
+            }
             Event::UserEvent(UserEvent::RefreshStats) => {
                 if let Some(wv) = &webview {
                     refresh_stats_webview(wv);
