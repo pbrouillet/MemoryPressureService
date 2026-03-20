@@ -289,95 +289,127 @@ fn spawn_monitor_thread(settings: Arc<Mutex<config::Settings>>) {
 
             let cfg = settings.lock().unwrap().clone();
 
-            // Memory load: alert when ABOVE threshold
-            check_threshold_above(
+            // Memory load: alert when ABOVE threshold → purge all
+            if let Some(action) = check_threshold_above(
                 &cfg.memory_load,
                 s.memory_load_percent as f64,
                 &mut alerted_memory_load,
-                "Memory Load",
-                &format!("{}%", s.memory_load_percent),
-                &format!("{}%", cfg.memory_load.warning),
-            );
+            ) {
+                let current = format!("{}%", s.memory_load_percent);
+                let threshold = format!("{}%", cfg.memory_load.warning);
+                handle_threshold_action(action, "Memory Load", &current, &threshold, || {
+                    let _ = purge::purge_working_sets();
+                    let _ = purge::purge_modified();
+                    let _ = purge::purge_standby(false);
+                });
+            }
 
-            // Available memory: alert when BELOW threshold
-            check_threshold_below(
+            // Available memory: alert when BELOW threshold → purge all
+            if let Some(action) = check_threshold_below(
                 &cfg.available_memory,
                 s.available_physical_mb,
                 &mut alerted_available,
-                "Available Memory",
-                &format!("{:.0} MB", s.available_physical_mb),
-                &format!("{:.0} MB", cfg.available_memory.warning),
-            );
+            ) {
+                let current = format!("{:.0} MB", s.available_physical_mb);
+                let threshold = format!("{:.0} MB", cfg.available_memory.warning);
+                handle_threshold_action(action, "Available Memory", &current, &threshold, || {
+                    let _ = purge::purge_working_sets();
+                    let _ = purge::purge_modified();
+                    let _ = purge::purge_standby(false);
+                });
+            }
 
-            // Modified list: alert when ABOVE threshold
-            check_threshold_above(
+            // Modified list: alert when ABOVE threshold → flush modified
+            if let Some(action) = check_threshold_above(
                 &cfg.modified_list,
                 s.modified_mb,
                 &mut alerted_modified,
-                "Modified List",
-                &format!("{:.0} MB", s.modified_mb),
-                &format!("{:.0} MB", cfg.modified_list.warning),
-            );
+            ) {
+                let current = format!("{:.0} MB", s.modified_mb);
+                let threshold = format!("{:.0} MB", cfg.modified_list.warning);
+                handle_threshold_action(action, "Modified List", &current, &threshold, || {
+                    let _ = purge::purge_modified();
+                });
+            }
 
-            // Standby list: alert when ABOVE threshold
-            check_threshold_above(
+            // Standby list: alert when ABOVE threshold → purge standby
+            if let Some(action) = check_threshold_above(
                 &cfg.standby_list,
                 s.standby_mb,
                 &mut alerted_standby,
-                "Standby List",
-                &format!("{:.0} MB", s.standby_mb),
-                &format!("{:.0} MB", cfg.standby_list.warning),
-            );
+            ) {
+                let current = format!("{:.0} MB", s.standby_mb);
+                let threshold = format!("{:.0} MB", cfg.standby_list.warning);
+                handle_threshold_action(action, "Standby List", &current, &threshold, || {
+                    let _ = purge::purge_standby(false);
+                });
+            }
         }
     });
 }
 
-/// Fire a notification when `value` goes above `threshold.warning`.
+/// Execute the configured action for a threshold breach.
+fn handle_threshold_action(
+    action: config::ThresholdAction,
+    area: &str,
+    current: &str,
+    threshold: &str,
+    purge_fn: impl FnOnce(),
+) {
+    match action {
+        config::ThresholdAction::Notify => {
+            toast::alert_pressure(area, current, threshold);
+        }
+        config::ThresholdAction::Purge => {
+            toast::alert_pressure(area, current, &format!("{threshold} — purging"));
+            purge_fn();
+        }
+        config::ThresholdAction::None => {}
+    }
+}
+
+/// Returns `Some(action)` when value crosses above `cfg.warning` for the first time.
 /// Resets when value drops back below.
 fn check_threshold_above(
     cfg: &config::ThresholdConfig,
     value: f64,
     alerted: &mut bool,
-    area: &str,
-    current_str: &str,
-    threshold_str: &str,
-) {
+) -> Option<config::ThresholdAction> {
     if cfg.action == config::ThresholdAction::None {
         *alerted = false;
-        return;
+        return None;
     }
     if value >= cfg.warning {
         if !*alerted {
             *alerted = true;
-            toast::alert_pressure(area, current_str, threshold_str);
+            return Some(cfg.action);
         }
     } else {
         *alerted = false;
     }
+    None
 }
 
-/// Fire a notification when `value` drops below `threshold.warning`.
+/// Returns `Some(action)` when value drops below `cfg.warning` for the first time.
 /// Resets when value rises back above.
 fn check_threshold_below(
     cfg: &config::ThresholdConfig,
     value: f64,
     alerted: &mut bool,
-    area: &str,
-    current_str: &str,
-    threshold_str: &str,
-) {
+) -> Option<config::ThresholdAction> {
     if cfg.action == config::ThresholdAction::None {
         *alerted = false;
-        return;
+        return None;
     }
     if value <= cfg.warning {
         if !*alerted {
             *alerted = true;
-            toast::alert_pressure(area, current_str, threshold_str);
+            return Some(cfg.action);
         }
     } else {
         *alerted = false;
     }
+    None
 }
 
 fn refresh_stats_webview(webview: &wry::WebView) {
