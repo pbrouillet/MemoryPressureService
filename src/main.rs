@@ -9,6 +9,7 @@ mod privilege;
 mod purge;
 mod settings_html;
 mod stats;
+mod toast;
 
 use std::process;
 use std::sync::mpsc;

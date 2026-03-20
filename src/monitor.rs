@@ -1,4 +1,6 @@
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
@@ -7,7 +9,7 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Sub
 use tray_icon::{Icon, TrayIconBuilder};
 use wry::WebViewBuilder;
 
-use crate::{config, html, privilege, purge, settings_html, stats};
+use crate::{config, html, privilege, purge, settings_html, stats, toast};
 
 #[derive(Debug)]
 enum UserEvent {
@@ -90,7 +92,10 @@ pub fn run() {
     let mut webview: Option<wry::WebView> = None;
     let mut settings_window: Option<tao::window::Window> = None;
     let mut settings_webview: Option<wry::WebView> = None;
-    let mut settings = config::Settings::load();
+    let settings = Arc::new(Mutex::new(config::Settings::load()));
+
+    // --- Spawn monitoring thread ---
+    spawn_monitor_thread(Arc::clone(&settings));
 
     event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -117,13 +122,15 @@ pub fn run() {
                         let (w, wv) = create_settings_window(event_loop, ipc_proxy);
                         settings_window = Some(w);
                         settings_webview = Some(wv);
-                        inject_settings(settings_webview.as_ref().unwrap(), &settings);
+                        let s = settings.lock().unwrap();
+                        inject_settings(settings_webview.as_ref().unwrap(), &s);
                     } else {
                         if let Some(w) = &settings_window {
                             w.set_visible(true);
                             w.set_focus();
                         }
-                        inject_settings(settings_webview.as_ref().unwrap(), &settings);
+                        let s = settings.lock().unwrap();
+                        inject_settings(settings_webview.as_ref().unwrap(), &s);
                     }
                 } else if *eid == id_ws {
                     spawn_purge(&proxy, "Working Sets", PurgeKind::WorkingSets);
@@ -151,9 +158,12 @@ pub fn run() {
                 }
             }
             Event::UserEvent(UserEvent::SettingsSaved(new_settings)) => {
-                settings = new_settings;
-                if let Err(e) = settings.save() {
-                    eprintln!("Failed to save settings: {e}");
+                {
+                    let mut s = settings.lock().unwrap();
+                    *s = new_settings;
+                    if let Err(e) = s.save() {
+                        eprintln!("Failed to save settings: {e}");
+                    }
                 }
                 if let Some(wv) = &settings_webview {
                     let _ = wv.evaluate_script("showToast('Settings saved')");
@@ -255,6 +265,119 @@ fn inject_settings(webview: &wry::WebView, settings: &config::Settings) {
     let json = serde_json::to_string(settings).unwrap_or_default();
     let script = format!("loadSettings({json})");
     let _ = webview.evaluate_script(&script);
+}
+
+/// Spawn a background thread that periodically checks memory stats against thresholds.
+/// Uses hysteresis: an alert fires once when the threshold is crossed, and only re-fires
+/// after the value recovers below the threshold and crosses again.
+fn spawn_monitor_thread(settings: Arc<Mutex<config::Settings>>) {
+    thread::spawn(move || {
+        const POLL_INTERVAL: Duration = Duration::from_secs(5);
+
+        // Track whether each area is currently in alert state (above threshold).
+        let mut alerted_memory_load = false;
+        let mut alerted_available = false;
+        let mut alerted_modified = false;
+        let mut alerted_standby = false;
+
+        loop {
+            thread::sleep(POLL_INTERVAL);
+
+            let Ok(s) = stats::collect_stats() else {
+                continue;
+            };
+
+            let cfg = settings.lock().unwrap().clone();
+
+            // Memory load: alert when ABOVE threshold
+            check_threshold_above(
+                &cfg.memory_load,
+                s.memory_load_percent as f64,
+                &mut alerted_memory_load,
+                "Memory Load",
+                &format!("{}%", s.memory_load_percent),
+                &format!("{}%", cfg.memory_load.warning),
+            );
+
+            // Available memory: alert when BELOW threshold
+            check_threshold_below(
+                &cfg.available_memory,
+                s.available_physical_mb,
+                &mut alerted_available,
+                "Available Memory",
+                &format!("{:.0} MB", s.available_physical_mb),
+                &format!("{:.0} MB", cfg.available_memory.warning),
+            );
+
+            // Modified list: alert when ABOVE threshold
+            check_threshold_above(
+                &cfg.modified_list,
+                s.modified_mb,
+                &mut alerted_modified,
+                "Modified List",
+                &format!("{:.0} MB", s.modified_mb),
+                &format!("{:.0} MB", cfg.modified_list.warning),
+            );
+
+            // Standby list: alert when ABOVE threshold
+            check_threshold_above(
+                &cfg.standby_list,
+                s.standby_mb,
+                &mut alerted_standby,
+                "Standby List",
+                &format!("{:.0} MB", s.standby_mb),
+                &format!("{:.0} MB", cfg.standby_list.warning),
+            );
+        }
+    });
+}
+
+/// Fire a notification when `value` goes above `threshold.warning`.
+/// Resets when value drops back below.
+fn check_threshold_above(
+    cfg: &config::ThresholdConfig,
+    value: f64,
+    alerted: &mut bool,
+    area: &str,
+    current_str: &str,
+    threshold_str: &str,
+) {
+    if cfg.action == config::ThresholdAction::None {
+        *alerted = false;
+        return;
+    }
+    if value >= cfg.warning {
+        if !*alerted {
+            *alerted = true;
+            toast::alert_pressure(area, current_str, threshold_str);
+        }
+    } else {
+        *alerted = false;
+    }
+}
+
+/// Fire a notification when `value` drops below `threshold.warning`.
+/// Resets when value rises back above.
+fn check_threshold_below(
+    cfg: &config::ThresholdConfig,
+    value: f64,
+    alerted: &mut bool,
+    area: &str,
+    current_str: &str,
+    threshold_str: &str,
+) {
+    if cfg.action == config::ThresholdAction::None {
+        *alerted = false;
+        return;
+    }
+    if value <= cfg.warning {
+        if !*alerted {
+            *alerted = true;
+            toast::alert_pressure(area, current_str, threshold_str);
+        }
+    } else {
+        *alerted = false;
+    }
 }
 
 fn refresh_stats_webview(webview: &wry::WebView) {

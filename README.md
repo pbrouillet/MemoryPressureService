@@ -33,10 +33,11 @@ mpa monitor                     # Launch system-tray monitor mode
 - **Tray icon** — right-click for context menu
 - **Stats** — opens a modern **WebView2 window** with Fluent Design styling (dark/light mode, card layout, color-coded bars, memory load gauge)
 - **Settings** — opens a configuration dialog for warning thresholds and actions per memory area (memory load, available memory, modified list, standby list). Settings are saved to `mpa-settings.json` next to the executable.
+- **Background monitoring** — polls memory stats every 5 seconds and sends a Windows toast notification when a configured threshold is exceeded (with hysteresis to avoid notification spam)
 - **Purge Now** — submenu with Working Sets, Standby List, Standby (Low Priority), Modified List, and All
 - **Exit** — removes the tray icon and quits
 
-Purge operations run on a background thread; the stats window auto-refreshes on completion. The stats window uses WebView2 (Edge-based) for a native Windows 11 look and feel.
+Purge operations run on a background thread; the stats window auto-refreshes on completion. A **monitoring thread** polls stats every 5 seconds and sends native Windows toast notifications when configured thresholds are crossed (with hysteresis to avoid notification spam). The stats window uses WebView2 (Edge-based) for a native Windows 11 look and feel.
 
 ### Example output
 
