@@ -177,6 +177,7 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
     <select id="act-memory-load">
       <option value="none">None</option>
       <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
     </select>
   </div>
 
@@ -189,6 +190,7 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
     <select id="act-available-memory">
       <option value="none">None</option>
       <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
     </select>
   </div>
 
