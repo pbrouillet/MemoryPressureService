@@ -151,8 +151,9 @@ pub fn run() {
                     refresh_stats_webview(wv);
                 }
             }
-            Event::UserEvent(UserEvent::PurgeComplete(msg)) => {
-                eprintln!("{msg}"); // Also log to console
+            Event::UserEvent(UserEvent::PurgeComplete(ref msg)) => {
+                eprintln!("{msg}");
+                toast::notify("Purge Complete", msg);
                 if let Some(wv) = &webview {
                     refresh_stats_webview(wv);
                 }
@@ -362,7 +363,18 @@ fn handle_threshold_action(
         }
         config::ThresholdAction::Purge => {
             toast::alert_pressure(area, current, &format!("{threshold} — purging"));
+            let before = stats::collect_stats()
+                .map(|s| s.available_physical_mb)
+                .unwrap_or(0.0);
             purge_fn();
+            let after = stats::collect_stats()
+                .map(|s| s.available_physical_mb)
+                .unwrap_or(0.0);
+            let freed = after - before;
+            toast::notify(
+                "Purge Complete",
+                &format!("{area}: freed {freed:+.1} MB"),
+            );
         }
         config::ThresholdAction::None => {}
     }
