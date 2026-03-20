@@ -1,0 +1,32 @@
+.btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover {
+  background: var(--surface-hover);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+@media (prefers-color-scheme: light) {
+  .btn-primary {
+    color: #fff;
+  }
+}

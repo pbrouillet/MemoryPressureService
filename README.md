@@ -77,11 +77,16 @@ After a purge:
 
 ## Building
 
-Requires Rust 1.87+ and a Windows target.
+Requires Rust 1.87+ and **Node.js 18+** (with npm) on a Windows target.
 
 ```sh
 cargo build --release
 ```
+
+The build automatically:
+1. Runs `npm install` in `ui/` (if `node_modules` is missing)
+2. Builds the React/TypeScript UI apps via Vite into self-contained HTML files
+3. Embeds the built HTML into the Rust binary via `include_str!`
 
 The binary is at `target/release/mpa.exe`.
 

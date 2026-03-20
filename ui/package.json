@@ -1,0 +1,25 @@
+{
+  "name": "mpa-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev:stats": "vite --config vite.config.ts --mode stats",
+    "dev:settings": "vite --config vite.config.ts --mode settings",
+    "build": "npm run build:stats && npm run build:settings",
+    "build:stats": "vite build --config vite.config.ts --mode stats",
+    "build:settings": "vite build --config vite.config.ts --mode settings"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.3.0",
+    "vite-plugin-singlefile": "^2.0.0"
+  }
+}

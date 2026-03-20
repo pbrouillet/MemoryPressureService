@@ -1,0 +1,39 @@
+.mem-gauge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.gauge-bar {
+  flex: 1;
+  background: var(--border);
+  border-radius: 6px;
+  height: 24px;
+  overflow: hidden;
+  position: relative;
+}
+
+.gauge-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bar-free), var(--accent));
+  transition: width 0.6s ease;
+}
+
+.gauge-fill.high {
+  background: linear-gradient(90deg, var(--bar-modified), var(--bar-bad));
+}
+
+.gauge-label {
+  font-size: 24px;
+  font-weight: 700;
+  min-width: 60px;
+  text-align: right;
+}
+
+.gauge-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}

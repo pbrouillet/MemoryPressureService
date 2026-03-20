@@ -9,7 +9,10 @@ use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Sub
 use tray_icon::{Icon, TrayIconBuilder};
 use wry::WebViewBuilder;
 
-use crate::{config, html, privilege, purge, settings_html, stats, toast};
+use crate::{config, privilege, purge, stats, toast};
+
+const STATS_HTML: &str = include_str!("../ui/dist/stats.html");
+const SETTINGS_HTML: &str = include_str!("../ui/dist/settings.html");
 
 #[derive(Debug)]
 enum UserEvent {
@@ -209,7 +212,7 @@ fn create_stats_window(
         .expect("Failed to create stats window");
 
     let webview = WebViewBuilder::new()
-        .with_html(html::STATS_HTML)
+        .with_html(STATS_HTML)
         .with_ipc_handler(move |request| {
             let body = request.body();
             if body == "refresh" {
@@ -234,7 +237,7 @@ fn create_settings_window(
         .expect("Failed to create settings window");
 
     let webview = WebViewBuilder::new()
-        .with_html(settings_html::SETTINGS_HTML)
+        .with_html(SETTINGS_HTML)
         .with_ipc_handler(move |request| {
             let body = request.body();
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(body) {

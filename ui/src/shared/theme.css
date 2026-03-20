@@ -1,0 +1,55 @@
+:root {
+  --bg: #202020;
+  --surface: #2d2d2d;
+  --surface-hover: #383838;
+  --text: #e4e4e4;
+  --text-secondary: #999;
+  --accent: #60cdff;
+  --accent-dim: #60cdff44;
+  --border: #3a3a3a;
+  --input-bg: #1a1a1a;
+  --bar-zeroed: #5b9bd5;
+  --bar-free: #70ad47;
+  --bar-modified: #ed7d31;
+  --bar-standby: #ffc000;
+  --bar-bad: #ff4444;
+  --card-radius: 8px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f3f3f3;
+    --surface: #ffffff;
+    --surface-hover: #f0f0f0;
+    --text: #1a1a1a;
+    --text-secondary: #666;
+    --accent: #005fb8;
+    --accent-dim: #005fb822;
+    --border: #e0e0e0;
+    --input-bg: #ffffff;
+  }
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  user-select: none;
+  overflow-y: auto;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  letter-spacing: -0.3px;
+}

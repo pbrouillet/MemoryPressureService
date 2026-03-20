@@ -1,0 +1,27 @@
+.standby-grid {
+  display: contents;
+}
+
+.standby-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.standby-row .label {
+  font-size: 13px;
+}
+
+.standby-row .bar-bg {
+  height: 6px;
+  min-width: 80px;
+}
+
+.standby-row .pages,
+.standby-row .size {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
