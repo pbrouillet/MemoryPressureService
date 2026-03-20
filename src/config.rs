@@ -3,13 +3,17 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Per-area threshold configuration.
+/// Per-area threshold configuration with warning and critical levels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThresholdConfig {
     /// Warning threshold value (percent for memory_load, MB for others).
     pub warning: f64,
-    /// Action to take when threshold is exceeded.
-    pub action: ThresholdAction,
+    /// Action to take when warning threshold is exceeded.
+    pub warning_action: ThresholdAction,
+    /// Critical threshold value (percent for memory_load, MB for others).
+    pub critical: f64,
+    /// Action to take when critical threshold is exceeded.
+    pub critical_action: ThresholdAction,
 }
 
 /// Action to perform when a threshold is crossed.
@@ -34,20 +38,28 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             memory_load: ThresholdConfig {
-                warning: 85.0,
-                action: ThresholdAction::Notify,
+                warning: 80.0,
+                warning_action: ThresholdAction::Notify,
+                critical: 95.0,
+                critical_action: ThresholdAction::Notify,
             },
             modified_list: ThresholdConfig {
                 warning: 1024.0,
-                action: ThresholdAction::Notify,
+                warning_action: ThresholdAction::Notify,
+                critical: 4096.0,
+                critical_action: ThresholdAction::Purge,
             },
             standby_list: ThresholdConfig {
                 warning: 2048.0,
-                action: ThresholdAction::Notify,
+                warning_action: ThresholdAction::Notify,
+                critical: 8192.0,
+                critical_action: ThresholdAction::Purge,
             },
             available_memory: ThresholdConfig {
                 warning: 4096.0,
-                action: ThresholdAction::Notify,
+                warning_action: ThresholdAction::Notify,
+                critical: 2048.0,
+                critical_action: ThresholdAction::Purge,
             },
         }
     }

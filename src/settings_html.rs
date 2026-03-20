@@ -72,13 +72,28 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
   }
   .setting-row {
     display: grid;
-    grid-template-columns: 1fr 140px 150px;
-    gap: 12px;
+    grid-template-columns: 1fr 120px 140px 120px 140px;
+    gap: 10px;
     align-items: center;
     padding: 10px 0;
     border-bottom: 1px solid var(--border);
   }
   .setting-row:last-child { border-bottom: none; }
+  .col-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    padding-bottom: 4px;
+  }
+  .header-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 140px 120px 140px;
+    gap: 10px;
+    padding: 0 0 2px 0;
+    border-bottom: 1px solid var(--border);
+  }
   .setting-label {
     font-size: 14px;
     font-weight: 500;
@@ -166,15 +181,29 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
 <p class="subtitle">Configure warning thresholds and automated actions per memory area.</p>
 
 <div class="card">
-  <div class="card-title">Warning Thresholds</div>
+  <div class="card-title">Thresholds</div>
+
+  <div class="header-row">
+    <div class="col-header">Area</div>
+    <div class="col-header">Warning</div>
+    <div class="col-header">Action</div>
+    <div class="col-header">Critical</div>
+    <div class="col-header">Action</div>
+  </div>
 
   <div class="setting-row">
     <div>
       <div class="setting-label">Memory Load</div>
-      <div class="setting-hint">Overall physical memory usage (%)</div>
+      <div class="setting-hint">Overall usage (%)</div>
     </div>
-    <input type="number" id="th-memory-load" min="1" max="100" step="1" value="85">
-    <select id="act-memory-load">
+    <input type="number" id="w-th-memory-load" min="1" max="100" step="1" value="80">
+    <select id="w-act-memory-load">
+      <option value="none">None</option>
+      <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
+    </select>
+    <input type="number" id="c-th-memory-load" min="1" max="100" step="1" value="95">
+    <select id="c-act-memory-load">
       <option value="none">None</option>
       <option value="notify">Notify</option>
       <option value="purge">Purge</option>
@@ -184,10 +213,16 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
   <div class="setting-row">
     <div>
       <div class="setting-label">Available Memory</div>
-      <div class="setting-hint">Alert when available drops below (MB)</div>
+      <div class="setting-hint">Alert below (MB)</div>
     </div>
-    <input type="number" id="th-available-memory" min="0" step="256" value="4096">
-    <select id="act-available-memory">
+    <input type="number" id="w-th-available-memory" min="0" step="256" value="4096">
+    <select id="w-act-available-memory">
+      <option value="none">None</option>
+      <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
+    </select>
+    <input type="number" id="c-th-available-memory" min="0" step="256" value="2048">
+    <select id="c-act-available-memory">
       <option value="none">None</option>
       <option value="notify">Notify</option>
       <option value="purge">Purge</option>
@@ -197,10 +232,16 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
   <div class="setting-row">
     <div>
       <div class="setting-label">Modified List</div>
-      <div class="setting-hint">Dirty pages awaiting disk flush (MB)</div>
+      <div class="setting-hint">Dirty pages (MB)</div>
     </div>
-    <input type="number" id="th-modified-list" min="0" step="128" value="1024">
-    <select id="act-modified-list">
+    <input type="number" id="w-th-modified-list" min="0" step="128" value="1024">
+    <select id="w-act-modified-list">
+      <option value="none">None</option>
+      <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
+    </select>
+    <input type="number" id="c-th-modified-list" min="0" step="128" value="4096">
+    <select id="c-act-modified-list">
       <option value="none">None</option>
       <option value="notify">Notify</option>
       <option value="purge">Purge</option>
@@ -210,10 +251,16 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
   <div class="setting-row">
     <div>
       <div class="setting-label">Standby List</div>
-      <div class="setting-hint">Cached pages that can be repurposed (MB)</div>
+      <div class="setting-hint">Cached pages (MB)</div>
     </div>
-    <input type="number" id="th-standby-list" min="0" step="256" value="2048">
-    <select id="act-standby-list">
+    <input type="number" id="w-th-standby-list" min="0" step="256" value="2048">
+    <select id="w-act-standby-list">
+      <option value="none">None</option>
+      <option value="notify">Notify</option>
+      <option value="purge">Purge</option>
+    </select>
+    <input type="number" id="c-th-standby-list" min="0" step="256" value="8192">
+    <select id="c-act-standby-list">
       <option value="none">None</option>
       <option value="notify">Notify</option>
       <option value="purge">Purge</option>
@@ -230,33 +277,49 @@ pub const SETTINGS_HTML: &str = r##"<!DOCTYPE html>
 
 <script>
 function loadSettings(s) {
-  document.getElementById('th-memory-load').value = s.memory_load.warning;
-  document.getElementById('act-memory-load').value = s.memory_load.action;
-  document.getElementById('th-available-memory').value = s.available_memory.warning;
-  document.getElementById('act-available-memory').value = s.available_memory.action;
-  document.getElementById('th-modified-list').value = s.modified_list.warning;
-  document.getElementById('act-modified-list').value = s.modified_list.action;
-  document.getElementById('th-standby-list').value = s.standby_list.warning;
-  document.getElementById('act-standby-list').value = s.standby_list.action;
+  document.getElementById('w-th-memory-load').value = s.memory_load.warning;
+  document.getElementById('w-act-memory-load').value = s.memory_load.warning_action;
+  document.getElementById('c-th-memory-load').value = s.memory_load.critical;
+  document.getElementById('c-act-memory-load').value = s.memory_load.critical_action;
+  document.getElementById('w-th-available-memory').value = s.available_memory.warning;
+  document.getElementById('w-act-available-memory').value = s.available_memory.warning_action;
+  document.getElementById('c-th-available-memory').value = s.available_memory.critical;
+  document.getElementById('c-act-available-memory').value = s.available_memory.critical_action;
+  document.getElementById('w-th-modified-list').value = s.modified_list.warning;
+  document.getElementById('w-act-modified-list').value = s.modified_list.warning_action;
+  document.getElementById('c-th-modified-list').value = s.modified_list.critical;
+  document.getElementById('c-act-modified-list').value = s.modified_list.critical_action;
+  document.getElementById('w-th-standby-list').value = s.standby_list.warning;
+  document.getElementById('w-act-standby-list').value = s.standby_list.warning_action;
+  document.getElementById('c-th-standby-list').value = s.standby_list.critical;
+  document.getElementById('c-act-standby-list').value = s.standby_list.critical_action;
 }
 
 function collectSettings() {
   return {
     memory_load: {
-      warning: parseFloat(document.getElementById('th-memory-load').value) || 85,
-      action: document.getElementById('act-memory-load').value
+      warning: parseFloat(document.getElementById('w-th-memory-load').value) || 80,
+      warning_action: document.getElementById('w-act-memory-load').value,
+      critical: parseFloat(document.getElementById('c-th-memory-load').value) || 95,
+      critical_action: document.getElementById('c-act-memory-load').value
     },
     available_memory: {
-      warning: parseFloat(document.getElementById('th-available-memory').value) || 4096,
-      action: document.getElementById('act-available-memory').value
+      warning: parseFloat(document.getElementById('w-th-available-memory').value) || 4096,
+      warning_action: document.getElementById('w-act-available-memory').value,
+      critical: parseFloat(document.getElementById('c-th-available-memory').value) || 2048,
+      critical_action: document.getElementById('c-act-available-memory').value
     },
     modified_list: {
-      warning: parseFloat(document.getElementById('th-modified-list').value) || 1024,
-      action: document.getElementById('act-modified-list').value
+      warning: parseFloat(document.getElementById('w-th-modified-list').value) || 1024,
+      warning_action: document.getElementById('w-act-modified-list').value,
+      critical: parseFloat(document.getElementById('c-th-modified-list').value) || 4096,
+      critical_action: document.getElementById('c-act-modified-list').value
     },
     standby_list: {
-      warning: parseFloat(document.getElementById('th-standby-list').value) || 2048,
-      action: document.getElementById('act-standby-list').value
+      warning: parseFloat(document.getElementById('w-th-standby-list').value) || 2048,
+      warning_action: document.getElementById('w-act-standby-list').value,
+      critical: parseFloat(document.getElementById('c-th-standby-list').value) || 8192,
+      critical_action: document.getElementById('c-act-standby-list').value
     }
   };
 }
