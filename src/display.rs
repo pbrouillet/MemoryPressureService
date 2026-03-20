@@ -16,6 +16,7 @@ fn render_json(stats: &MemoryStats) {
 }
 
 /// Build the stats tables as a single String (for use in GUI windows).
+#[allow(dead_code)]
 pub fn render_table_to_string(stats: &MemoryStats) -> String {
     let mut out = String::new();
     out.push_str(&build_overview_table(stats).to_string());

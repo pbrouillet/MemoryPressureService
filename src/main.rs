@@ -1,13 +1,12 @@
 mod cli;
 mod display;
 mod error;
+mod html;
 mod monitor;
 mod ntapi;
 mod privilege;
 mod purge;
 mod stats;
-mod statswindow;
-mod tray;
 
 use std::process;
 use std::sync::mpsc;

@@ -30,11 +30,11 @@ mpa monitor                     # Launch system-tray monitor mode
 
 `mpa monitor` starts a resident system-tray application with:
 - **Tray icon** — right-click for context menu
-- **Stats** — opens a window displaying the same memory statistics table
+- **Stats** — opens a modern **WebView2 window** with Fluent Design styling (dark/light mode, card layout, color-coded bars, memory load gauge)
 - **Purge Now** — submenu with Working Sets, Standby List, Standby (Low Priority), Modified List, and All
 - **Exit** — removes the tray icon and quits
 
-Purge operations run on a background thread with a balloon notification on completion showing the result and how much memory was freed.
+Purge operations run on a background thread; the stats window auto-refreshes on completion. The stats window uses WebView2 (Edge-based) for a native Windows 11 look and feel.
 
 ### Example output
 

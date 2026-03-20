@@ -1,101 +1,188 @@
 use std::thread;
 
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DefWindowProcW, DispatchMessageW, GetMessageW, MSG, TranslateMessage,
-    WM_COMMAND, WM_DESTROY, WM_RBUTTONUP,
-};
+use tao::event::{Event, WindowEvent};
+use tao::event_loop::{ControlFlow, EventLoopBuilder};
+use tao::window::WindowBuilder;
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use tray_icon::{Icon, TrayIconBuilder};
+use wry::WebViewBuilder;
 
-use crate::privilege;
-use crate::purge;
-use crate::stats;
-use crate::tray;
-use crate::statswindow;
+use crate::{html, privilege, purge, stats};
 
-/// Global hidden-window handle, set once during init.
-static mut G_HWND: HWND = std::ptr::null_mut();
-/// Global stats-window handle.
-static mut G_STATS_HWND: HWND = std::ptr::null_mut();
+#[derive(Debug)]
+enum UserEvent {
+    RefreshStats,
+    PurgeComplete(String),
+}
 
-/// Entry point for monitor (tray) mode.
 pub fn run() {
     // Check elevation
     if !privilege::is_elevated() {
         eprintln!("Warning: Running without Administrator privileges. Purge operations will fail.");
-        eprintln!("Consider restarting as Administrator for full functionality.");
+        eprintln!("Consider restarting as Administrator for full functionality.\n");
     } else if let Err(e) = privilege::elevate_for_purge() {
-        eprintln!("Warning: Could not enable purge privileges: {e}");
+        eprintln!("Warning: Could not enable purge privileges: {e}\n");
     }
 
-    // Register window classes
-    tray::register_class(wnd_proc);
-    statswindow::register_class();
+    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    let proxy = event_loop.create_proxy();
 
-    // Create windows
-    let hwnd = tray::create_hidden_window();
-    let stats_hwnd = statswindow::create_window();
+    // --- Build tray menu ---
+    let stats_item = MenuItem::new("Stats", true, None);
+    let purge_sub = Submenu::new("Purge Now", true);
+    let ws_item = MenuItem::new("Working Sets", true, None);
+    let sb_item = MenuItem::new("Standby List", true, None);
+    let sbl_item = MenuItem::new("Standby (Low Priority)", true, None);
+    let mod_item = MenuItem::new("Modified List", true, None);
+    let all_item = MenuItem::new("All", true, None);
+    let exit_item = MenuItem::new("Exit", true, None);
 
-    unsafe {
-        G_HWND = hwnd;
-        G_STATS_HWND = stats_hwnd;
-    }
+    let _ = purge_sub.append_items(&[
+        &ws_item,
+        &sb_item,
+        &sbl_item,
+        &mod_item,
+        &PredefinedMenuItem::separator(),
+        &all_item,
+    ]);
 
-    tray::add_tray_icon(hwnd);
+    let menu = Menu::new();
+    let _ = menu.append_items(&[
+        &stats_item,
+        &PredefinedMenuItem::separator(),
+        &purge_sub,
+        &PredefinedMenuItem::separator(),
+        &exit_item,
+    ]);
 
-    // Win32 message loop
-    unsafe {
-        let mut msg: MSG = std::mem::zeroed();
-        while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-    }
-}
+    // Capture menu item IDs for matching
+    let id_stats = stats_item.id().clone();
+    let id_ws = ws_item.id().clone();
+    let id_sb = sb_item.id().clone();
+    let id_sbl = sbl_item.id().clone();
+    let id_mod = mod_item.id().clone();
+    let id_all = all_item.id().clone();
+    let id_exit = exit_item.id().clone();
 
-unsafe extern "system" fn wnd_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    unsafe {
-        match msg {
-            tray::WM_TRAY_CALLBACK => {
-                let event = (lparam & 0xFFFF) as u32;
-                if event == WM_RBUTTONUP {
-                    tray::show_context_menu(hwnd);
+    // --- Create tray icon ---
+    let icon = create_icon();
+    let _tray = TrayIconBuilder::new()
+        .with_menu(Box::new(menu))
+        .with_tooltip("Memory Pressure Agent")
+        .with_icon(icon)
+        .build()
+        .expect("Failed to create tray icon");
+
+    // Forward menu events to the event loop
+    let menu_proxy = event_loop.create_proxy();
+    MenuEvent::set_event_handler(Some(move |_event: MenuEvent| {
+        // Wake the event loop so it can poll the receiver
+        let _ = menu_proxy.send_event(UserEvent::RefreshStats);
+    }));
+
+    // --- State ---
+    let mut window: Option<tao::window::Window> = None;
+    let mut webview: Option<wry::WebView> = None;
+
+    event_loop.run(move |event, event_loop, control_flow| {
+        *control_flow = ControlFlow::Wait;
+
+        // Poll for menu events
+        while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
+            let eid = &menu_event.id;
+            if *eid == id_stats {
+                // Create or show stats window
+                if window.is_none() {
+                    let ipc_proxy = proxy.clone();
+                    let (w, wv) = create_stats_window(event_loop, ipc_proxy);
+                    window = Some(w);
+                    webview = Some(wv);
+                    // Initial refresh
+                    refresh_stats_webview(webview.as_ref().unwrap());
+                } else {
+                    // Bring to front
+                    if let Some(w) = &window {
+                        w.set_visible(true);
+                        w.set_focus();
+                    }
+                    refresh_stats_webview(webview.as_ref().unwrap());
                 }
-                0
+            } else if *eid == id_ws {
+                spawn_purge(&proxy, "Working Sets", PurgeKind::WorkingSets);
+            } else if *eid == id_sb {
+                spawn_purge(&proxy, "Standby List", PurgeKind::Standby);
+            } else if *eid == id_sbl {
+                spawn_purge(&proxy, "Standby (Low)", PurgeKind::StandbyLow);
+            } else if *eid == id_mod {
+                spawn_purge(&proxy, "Modified List", PurgeKind::Modified);
+            } else if *eid == id_all {
+                spawn_purge(&proxy, "All", PurgeKind::All);
+            } else if *eid == id_exit {
+                *control_flow = ControlFlow::ExitWithCode(0);
             }
-            WM_COMMAND => {
-                let id = (wparam & 0xFFFF) as u16;
-                handle_menu_command(hwnd, id);
-                0
-            }
-            WM_DESTROY => {
-                tray::on_destroy(hwnd);
-                0
-            }
-            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
-    }
+
+        match event {
+            Event::UserEvent(UserEvent::RefreshStats) => {
+                if let Some(wv) = &webview {
+                    refresh_stats_webview(wv);
+                }
+            }
+            Event::UserEvent(UserEvent::PurgeComplete(msg)) => {
+                eprintln!("{msg}"); // Also log to console
+                if let Some(wv) = &webview {
+                    refresh_stats_webview(wv);
+                }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                // Hide instead of destroying
+                if let Some(w) = &window {
+                    w.set_visible(false);
+                }
+            }
+            _ => {}
+        }
+    });
 }
 
-fn handle_menu_command(hwnd: HWND, id: u16) {
-    match id {
-        tray::ID_STATS => {
-            let stats_hwnd = unsafe { G_STATS_HWND };
-            if !stats_hwnd.is_null() {
-                statswindow::show(stats_hwnd);
+fn create_stats_window(
+    event_loop: &tao::event_loop::EventLoopWindowTarget<UserEvent>,
+    ipc_proxy: tao::event_loop::EventLoopProxy<UserEvent>,
+) -> (tao::window::Window, wry::WebView) {
+    let window = WindowBuilder::new()
+        .with_title("MPA — Memory Statistics")
+        .with_inner_size(tao::dpi::LogicalSize::new(720.0, 700.0))
+        .build(event_loop)
+        .expect("Failed to create stats window");
+
+    let webview = WebViewBuilder::new()
+        .with_html(html::STATS_HTML)
+        .with_ipc_handler(move |request| {
+            let body = request.body();
+            if body == "refresh" {
+                let _ = ipc_proxy.send_event(UserEvent::RefreshStats);
             }
+        })
+        .build(&window)
+        .expect("Failed to create WebView");
+
+    (window, webview)
+}
+
+fn refresh_stats_webview(webview: &wry::WebView) {
+    match stats::collect_stats() {
+        Ok(s) => {
+            let json = serde_json::to_string(&s).unwrap_or_default();
+            let script = format!("updateStats({json})");
+            let _ = webview.evaluate_script(&script);
         }
-        tray::ID_PURGE_WORKINGSETS => spawn_purge(hwnd, "Working Sets", PurgeKind::WorkingSets),
-        tray::ID_PURGE_STANDBY => spawn_purge(hwnd, "Standby List", PurgeKind::Standby),
-        tray::ID_PURGE_STANDBY_LOW => spawn_purge(hwnd, "Standby (Low)", PurgeKind::StandbyLow),
-        tray::ID_PURGE_MODIFIED => spawn_purge(hwnd, "Modified List", PurgeKind::Modified),
-        tray::ID_PURGE_ALL => spawn_purge(hwnd, "All", PurgeKind::All),
-        tray::ID_EXIT => tray::request_exit(hwnd),
-        _ => {}
+        Err(e) => {
+            let escaped = e.to_string().replace('\\', "\\\\").replace('\'', "\\'");
+            let _ = webview.evaluate_script(&format!("showError('{escaped}')"));
+        }
     }
 }
 
@@ -108,14 +195,15 @@ enum PurgeKind {
     All,
 }
 
-fn spawn_purge(hwnd: HWND, label: &str, kind: PurgeKind) {
+fn spawn_purge(
+    proxy: &tao::event_loop::EventLoopProxy<UserEvent>,
+    label: &str,
+    kind: PurgeKind,
+) {
     let label = label.to_string();
-    let hwnd_raw = hwnd as usize; // HWND is a pointer; cast to usize for Send
+    let proxy = proxy.clone();
 
     thread::spawn(move || {
-        let hwnd: HWND = hwnd_raw as HWND;
-
-        // Collect before stats
         let before_avail = stats::collect_stats()
             .map(|s| s.available_physical_mb)
             .unwrap_or(0.0);
@@ -130,27 +218,70 @@ fn spawn_purge(hwnd: HWND, label: &str, kind: PurgeKind) {
                 let ws = purge::purge_working_sets();
                 let _ = purge::purge_modified();
                 let _ = purge::purge_standby(false);
-                ws.map(|r| format!("Trimmed {} processes + flushed + purged", r.processes_trimmed))
+                ws.map(|r| {
+                    format!(
+                        "Trimmed {} processes + flushed + purged",
+                        r.processes_trimmed
+                    )
+                })
             }
         };
 
         let after_avail = stats::collect_stats()
             .map(|s| s.available_physical_mb)
             .unwrap_or(0.0);
-
         let freed = after_avail - before_avail;
 
         let message = match result {
-            Ok(detail) => format!("Purge {label}: {detail}\nFreed {freed:+.1} MB"),
+            Ok(detail) => format!("Purge {label}: {detail} (freed {freed:+.1} MB)"),
             Err(e) => format!("Purge {label} failed: {e}"),
         };
 
-        tray::show_balloon(hwnd, "MPA Purge", &message);
-
-        // Refresh the stats window if it's visible
-        let stats_hwnd = unsafe { G_STATS_HWND };
-        if !stats_hwnd.is_null() && statswindow::is_visible(stats_hwnd) {
-            statswindow::post_refresh(stats_hwnd);
-        }
+        let _ = proxy.send_event(UserEvent::PurgeComplete(message));
     });
+}
+
+/// Create a simple 16×16 RGBA icon (blue square with white "M").
+fn create_icon() -> Icon {
+    let size = 16u32;
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+    for y in 0..size {
+        for x in 0..size {
+            let idx = ((y * size + x) * 4) as usize;
+            // Dark blue background
+            rgba[idx] = 30; // R
+            rgba[idx + 1] = 80; // G
+            rgba[idx + 2] = 180; // B
+            rgba[idx + 3] = 255; // A
+        }
+    }
+
+    // Draw a simple white "M" shape
+    let white = |rgba: &mut [u8], x: u32, y: u32| {
+        if x < size && y < size {
+            let idx = ((y * size + x) * 4) as usize;
+            rgba[idx] = 255;
+            rgba[idx + 1] = 255;
+            rgba[idx + 2] = 255;
+        }
+    };
+    // Left vertical
+    for y in 3..13 {
+        white(&mut rgba, 3, y);
+    }
+    // Right vertical
+    for y in 3..13 {
+        white(&mut rgba, 12, y);
+    }
+    // Left diagonal
+    for i in 0..4 {
+        white(&mut rgba, 4 + i, 4 + i);
+    }
+    // Right diagonal
+    for i in 0..4 {
+        white(&mut rgba, 11 - i, 4 + i);
+    }
+
+    Icon::from_rgba(rgba, size, size).expect("Failed to create icon")
 }
