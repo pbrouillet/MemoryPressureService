@@ -65,7 +65,7 @@ pub fn run() {
     let id_exit = exit_item.id().clone();
 
     // --- Create tray icon ---
-    let icon = create_icon();
+    let icon = create_tray_icon();
     let _tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("Memory Pressure Agent")
@@ -155,6 +155,7 @@ fn create_stats_window(
     let window = WindowBuilder::new()
         .with_title("MPA — Memory Statistics")
         .with_inner_size(tao::dpi::LogicalSize::new(720.0, 700.0))
+        .with_window_icon(Some(create_window_icon()))
         .build(event_loop)
         .expect("Failed to create stats window");
 
@@ -241,47 +242,26 @@ fn spawn_purge(
     });
 }
 
-/// Create a simple 16×16 RGBA icon (blue square with white "M").
-fn create_icon() -> Icon {
-    let size = 16u32;
-    let mut rgba = vec![0u8; (size * size * 4) as usize];
+/// Load the embedded app icon PNG and decode to RGBA at the given size.
+fn load_icon_rgba(target_size: u32) -> (Vec<u8>, u32, u32) {
+    let png_bytes = include_bytes!("../docs/appicon.png");
+    let img = image::load_from_memory(png_bytes).expect("Failed to decode embedded icon PNG");
+    let resized = img.resize_exact(
+        target_size,
+        target_size,
+        image::imageops::FilterType::Lanczos3,
+    );
+    let rgba = resized.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    (rgba.into_raw(), w, h)
+}
 
-    for y in 0..size {
-        for x in 0..size {
-            let idx = ((y * size + x) * 4) as usize;
-            // Dark blue background
-            rgba[idx] = 30; // R
-            rgba[idx + 1] = 80; // G
-            rgba[idx + 2] = 180; // B
-            rgba[idx + 3] = 255; // A
-        }
-    }
+fn create_tray_icon() -> Icon {
+    let (rgba, w, h) = load_icon_rgba(32);
+    Icon::from_rgba(rgba, w, h).expect("Failed to create tray icon")
+}
 
-    // Draw a simple white "M" shape
-    let white = |rgba: &mut [u8], x: u32, y: u32| {
-        if x < size && y < size {
-            let idx = ((y * size + x) * 4) as usize;
-            rgba[idx] = 255;
-            rgba[idx + 1] = 255;
-            rgba[idx + 2] = 255;
-        }
-    };
-    // Left vertical
-    for y in 3..13 {
-        white(&mut rgba, 3, y);
-    }
-    // Right vertical
-    for y in 3..13 {
-        white(&mut rgba, 12, y);
-    }
-    // Left diagonal
-    for i in 0..4 {
-        white(&mut rgba, 4 + i, 4 + i);
-    }
-    // Right diagonal
-    for i in 0..4 {
-        white(&mut rgba, 11 - i, 4 + i);
-    }
-
-    Icon::from_rgba(rgba, size, size).expect("Failed to create icon")
+fn create_window_icon() -> tao::window::Icon {
+    let (rgba, w, h) = load_icon_rgba(48);
+    tao::window::Icon::from_rgba(rgba, w, h).expect("Failed to create window icon")
 }
