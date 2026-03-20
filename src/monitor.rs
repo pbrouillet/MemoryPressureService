@@ -262,6 +262,6 @@ fn create_tray_icon() -> Icon {
 }
 
 fn create_window_icon() -> tao::window::Icon {
-    let (rgba, w, h) = load_icon_rgba(48);
+    let (rgba, w, h) = load_icon_rgba(256);
     tao::window::Icon::from_rgba(rgba, w, h).expect("Failed to create window icon")
 }
